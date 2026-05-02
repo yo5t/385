@@ -1,7 +1,7 @@
 import discord
 from discord.ext import commands
 from discord.ui import Button, View, Select
-import json, os, asyncio
+import json, os, asyncio, re
 from datetime import timedelta
 
 TOKEN = os.environ.get("TOKEN", "")
@@ -12,6 +12,7 @@ WARN_FILE = "warns.json"
 LEVEL_ROLES = {5:"🔰 Recruit",10:"🗡️ TNC Member",20:"🛡️ UKA Member",30:"⚔️ KRD Member",50:"👑 Supreme Commander"}
 STAFF_ROLES = ["👑 Supreme Commander","⚔️ KRD Commander","🛡️ UKA Commander","🗡️ TNC Commander","⚔️ KRD Officer","🛡️ UKA Officer","🗡️ TNC Officer"]
 ALLIANCE_ROLES = {"KRD":"⚔️ KRD Member","UKA":"🛡️ UKA Member","TNC":"🗡️ TNC Member"}
+PROFILE_ROLES = ["Dark Age","Feudal Age","Castle Age","Imperial Age","Asia","Africa","Americas","Europe","Whale","Dolphin","F2P","Male","Female"]
 
 def load(f): return json.load(open(f)) if os.path.exists(f) else {}
 def save(f,d): json.dump(d,open(f,"w"))
@@ -20,55 +21,72 @@ def lvl(xp): return int((xp/100)**0.5)
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
+# ========== VERIFY ==========
+
 class VerifyActionView(View):
-    def __init__(self, member, verify_ch, alliance):
+    def __init__(self, member_id=None, verify_ch_id=None, alliance=None):
         super().__init__(timeout=None)
-        self.member = member
-        self.verify_ch = verify_ch
+        self.member_id = member_id
+        self.verify_ch_id = verify_ch_id
         self.alliance = alliance
 
     @discord.ui.button(label="✅ Verify", style=discord.ButtonStyle.green, custom_id="verify_accept")
     async def accept(self, interaction: discord.Interaction, button: Button):
-await interaction.response.defer(ephemeral=True)
         if not interaction.user.guild_permissions.manage_roles:
             await interaction.response.send_message("❌ No permission!", ephemeral=True)
             return
+        await interaction.response.defer(ephemeral=True)
         guild = interaction.guild
+        member = guild.get_member(self.member_id)
+        verify_ch = guild.get_channel(self.verify_ch_id)
+        if not member:
+            await interaction.followup.send("❌ Member not found!", ephemeral=True)
+            return
         verified_role = discord.utils.get(guild.roles, name="✅ Verified")
         if not verified_role:
             verified_role = await guild.create_role(name="✅ Verified", color=discord.Color.green())
-        await self.member.add_roles(verified_role)
+        await member.add_roles(verified_role)
         if self.alliance and self.alliance in ALLIANCE_ROLES:
             alliance_role = discord.utils.get(guild.roles, name=ALLIANCE_ROLES[self.alliance])
             if alliance_role:
-                await self.member.add_roles(alliance_role)
+                await member.add_roles(alliance_role)
         welcome_ch = discord.utils.get(guild.text_channels, name="welcome")
         if welcome_ch:
-            embed = discord.Embed(title="⚔️ New Verified Member!", description=f"Welcome {self.member.mention} to A3O8E5!\nAlliance: **{self.alliance}**\nGlory to the Alliance! 🏰", color=0xFFD700)
-            embed.set_thumbnail(url=self.member.display_avatar.url)
+            embed = discord.Embed(title="⚔️ New Verified Member!", description=f"Welcome {member.mention} to A3O8E5!\nAlliance: **{self.alliance}**\nGlory to the Alliance! 🏰", color=0xFFD700)
+            embed.set_thumbnail(url=member.display_avatar.url)
             await welcome_ch.send(embed=embed)
         try:
-            await self.member.send(f"✅ You have been verified! Welcome to A3O8E5! You joined **{self.alliance}**! ⚔️")
+            await member.send(f"✅ You have been verified! Welcome to A3O8E5! You joined **{self.alliance}**! ⚔️")
         except:
             pass
-        await interaction.response.send_message(f"✅ {self.member.mention} verified as **{self.alliance}** member!", ephemeral=True)
+        await interaction.followup.send(f"✅ {member.mention} verified as **{self.alliance}** member!", ephemeral=True)
         await asyncio.sleep(3)
-        await self.verify_ch.delete()
+        if verify_ch:
+            await verify_ch.delete()
 
     @discord.ui.button(label="❌ Reject", style=discord.ButtonStyle.red, custom_id="verify_reject")
     async def reject(self, interaction: discord.Interaction, button: Button):
-await interaction.response.defer(ephemeral=True)
         if not interaction.user.guild_permissions.manage_roles:
             await interaction.response.send_message("❌ No permission!", ephemeral=True)
             return
+        await interaction.response.defer(ephemeral=True)
+        guild = interaction.guild
+        member = guild.get_member(self.member_id)
+        verify_ch = guild.get_channel(self.verify_ch_id)
         try:
-            await self.member.send("❌ Your verification was rejected. You have been removed from A3O8E5.")
+            if member:
+                await member.send("❌ Your verification was rejected. You have been removed from A3O8E5.")
         except:
             pass
-        await interaction.response.send_message(f"❌ {self.member.mention} rejected.", ephemeral=True)
+        await interaction.followup.send(f"❌ Rejected.", ephemeral=True)
         await asyncio.sleep(3)
-        await self.verify_ch.delete()
-await self.verify_ch.edit(name="verified-closed")
+        if verify_ch:
+            await verify_ch.delete()
+        if member:
+            await member.kick(reason="Verification rejected")
+
+# ========== ONBOARDING ==========
+
 class AgeSelect(Select):
     def __init__(self, member_data):
         self.member_data = member_data
@@ -152,7 +170,7 @@ class OnboardingView(View):
     async def submit(self, interaction: discord.Interaction):
         missing = [k for k in ["age","continent","spending","alliance"] if k not in self.member_data]
         if missing:
-            await interaction.response.send_message(f"⚠️ Please complete all selections first!", ephemeral=True)
+            await interaction.response.send_message("⚠️ Please complete all selections first!", ephemeral=True)
             return
         data = self.member_data
         embed = discord.Embed(title="📋 Profile Submitted!", description="Now send your **verification video** showing:\n\n1️⃣ Your **in-game name**\n2️⃣ Your **alliance name** (KRD / UKA / TNC)\n\n⏰ You have **24 hours** to submit.", color=0xFFD700)
@@ -165,7 +183,9 @@ class OnboardingView(View):
         staff_mentions = " ".join([r.mention for r in self.guild.roles if r.name in STAFF_ROLES])
         embed2 = discord.Embed(title="🎥 Verification Request", description=f"**Member:** {self.member.mention}\n**Era:** {data.get('age','?')}\n**Continent:** {data.get('continent','?')}\n**Spending:** {data.get('spending','?')}\n**Gender:** {data.get('gender','?')}\n**Alliance:** {data.get('alliance','?')}\n\nWaiting for verification video... 🎥", color=0xFF8C00)
         embed2.set_thumbnail(url=self.member.display_avatar.url)
-        await self.verify_ch.send(content=staff_mentions, embed=embed2, view=VerifyActionView(self.member, self.verify_ch, data.get("alliance")))
+        await self.verify_ch.send(content=staff_mentions, embed=embed2, view=VerifyActionView(self.member.id, self.verify_ch.id, data.get("alliance")))
+
+# ========== TICKET ==========
 
 class TicketView(View):
     def __init__(self):
@@ -204,11 +224,14 @@ class CloseTicketView(View):
         await asyncio.sleep(5)
         await interaction.channel.delete()
 
+# ========== EVENTS ==========
+
 @bot.event
 async def on_ready():
     print(f"✅ A3O8E5 BOT Online! — {bot.guilds[0].name}")
     bot.add_view(TicketView())
     bot.add_view(CloseTicketView())
+    bot.add_view(VerifyActionView())
 
 @bot.event
 async def on_member_join(member):
@@ -245,11 +268,7 @@ async def on_member_join(member):
 
 @bot.event
 async def on_message(message):
-    if message.author.bot: 
-        return
-
-    import re  # ← أضف هذا السطر
-
+    if message.author.bot: return
     for word in BAD_WORDS:
         if re.search(rf"\b{word}\b", message.content.lower()):
             await message.delete()
@@ -265,7 +284,6 @@ async def on_message(message):
                 warns[uid]=0
                 save(WARN_FILE,warns)
             return
-
     xp = load(XP_FILE)
     uid = str(message.author.id)
     xp[uid] = xp.get(uid,0)+10
@@ -279,6 +297,8 @@ async def on_message(message):
             if not role: role = await message.guild.create_role(name=LEVEL_ROLES[new])
             await message.author.add_roles(role)
     await bot.process_commands(message)
+
+# ========== COMMANDS ==========
 
 @bot.command()
 async def rank(ctx):
