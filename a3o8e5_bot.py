@@ -248,7 +248,7 @@ async def on_member_join(member):
     verify_ch = await guild.create_text_channel(f"verify-{member.name.lower()}", category=verify_cat, overwrites=overwrites)
     embed = discord.Embed(
         title=f"⚔️ Welcome to A3O8E5, {member.display_name}!",
-        description="**Complete your profile below, then send a verification video showing:**\n\n1️⃣ Your **in-game name**\n2️⃣ Your **alliance name** (KRD / UKA / TNC)\n\n⏰ You have **24 hours** to verify or you will be kicked! 🚫",
+        description="**Complete your profile below, send a screenshot showing you are inside the alliance:**\n\n1️⃣ Your **in-game name**\n2️⃣ Your **alliance name** (KRD / UKA / TNC)\n\n⏰ You have **24 hours** to verify or you will be kicked! 🚫",
         color=0xFFD700
     )
     embed.set_thumbnail(url=member.display_avatar.url)
