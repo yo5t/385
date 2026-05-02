@@ -3,16 +3,17 @@ from discord.ext import commands
 from discord.ui import Button, View, Select
 import json, os, asyncio, re
 from datetime import timedelta
+import feedparser
 
 TOKEN = os.environ.get("TOKEN", "")
 GUILD_ID = 1496970391200207049
 BAD_WORDS = ["fuck","shit","bitch","ass","damn","idiot","stupid"]
 XP_FILE = "xp.json"
 WARN_FILE = "warns.json"
+NEWS_FILE = "last_news.txt"
 LEVEL_ROLES = {5:"🔰 Recruit",10:"🗡️ TNC Member",20:"🛡️ UKA Member",30:"⚔️ KRD Member",50:"👑 Supreme Commander"}
 STAFF_ROLES = ["👑 Supreme Commander","⚔️ KRD Commander","🛡️ UKA Commander","🗡️ TNC Commander","⚔️ KRD Officer","🛡️ UKA Officer","🗡️ TNC Officer"]
 ALLIANCE_ROLES = {"KRD":"⚔️ KRD Member","UKA":"🛡️ UKA Member","TNC":"🗡️ TNC Member"}
-PROFILE_ROLES = ["Dark Age","Feudal Age","Castle Age","Imperial Age","Asia","Africa","Americas","Europe","Whale","Dolphin","F2P","Male","Female"]
 
 def load(f): return json.load(open(f)) if os.path.exists(f) else {}
 def save(f,d): json.dump(d,open(f,"w"))
@@ -21,7 +22,32 @@ def lvl(xp): return int((xp/100)**0.5)
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# ========== VERIFY ==========
+async def check_news():
+    await bot.wait_until_ready()
+    last_url = open(NEWS_FILE).read().strip() if os.path.exists(NEWS_FILE) else ""
+    while not bot.is_closed():
+        try:
+            feed = feedparser.parse("https://www.reddit.com/r/AgeofEmpiresM/.rss")
+            if feed.entries:
+                entry = feed.entries[0]
+                if entry.link != last_url:
+                    last_url = entry.link
+                    open(NEWS_FILE,"w").write(last_url)
+                    guild = bot.get_guild(GUILD_ID)
+                    if guild:
+                        ch = discord.utils.get(guild.text_channels, name="game-news")
+                        if ch:
+                            embed = discord.Embed(
+                                title=f"🎮 {entry.title}",
+                                url=entry.link,
+                                description=entry.get("summary","")[:200],
+                                color=0xFFD700
+                            )
+                            embed.set_footer(text="r/AgeofEmpiresM")
+                            await ch.send(embed=embed)
+        except:
+            pass
+        await asyncio.sleep(3600)
 
 class VerifyActionView(View):
     def __init__(self, member_id=None, verify_ch_id=None, alliance=None):
@@ -59,7 +85,7 @@ class VerifyActionView(View):
             await member.send(f"✅ You have been verified! Welcome to A3O8E5! You joined **{self.alliance}**! ⚔️")
         except:
             pass
-        await interaction.followup.send(f"✅ {member.mention} verified as **{self.alliance}** member!", ephemeral=True)
+        await interaction.followup.send(f"✅ {member.mention} verified!", ephemeral=True)
         await asyncio.sleep(3)
         if verify_ch:
             await verify_ch.delete()
@@ -75,17 +101,15 @@ class VerifyActionView(View):
         verify_ch = guild.get_channel(self.verify_ch_id)
         try:
             if member:
-                await member.send("❌ Your verification was rejected. You have been removed from A3O8E5.")
+                await member.send("❌ Your verification was rejected.")
         except:
             pass
-        await interaction.followup.send(f"❌ Rejected.", ephemeral=True)
+        await interaction.followup.send("❌ Rejected.", ephemeral=True)
         await asyncio.sleep(3)
         if verify_ch:
             await verify_ch.delete()
         if member:
             await member.kick(reason="Verification rejected")
-
-# ========== ONBOARDING ==========
 
 class AgeSelect(Select):
     def __init__(self, member_data):
@@ -173,7 +197,7 @@ class OnboardingView(View):
             await interaction.response.send_message("⚠️ Please complete all selections first!", ephemeral=True)
             return
         data = self.member_data
-        embed = discord.Embed(title="📋 Profile Submitted!", description="Now send your **verification video** showing:\n\n1️⃣ Your **in-game name**\n2️⃣ Your **alliance name** (KRD / UKA / TNC)\n\n⏰ You have **24 hours** to submit.", color=0xFFD700)
+        embed = discord.Embed(title="📋 Profile Submitted!", description="Now send a **screenshot** showing you are inside the alliance!\n\n⏰ You have **24 hours** to submit.", color=0xFFD700)
         embed.add_field(name="⚔️ Era", value=data.get("age","?"))
         embed.add_field(name="🌍 Continent", value=data.get("continent","?"))
         embed.add_field(name="💰 Spending", value=data.get("spending","?"))
@@ -181,11 +205,9 @@ class OnboardingView(View):
         embed.add_field(name="🏰 Alliance", value=data.get("alliance","?"))
         await interaction.response.send_message(embed=embed)
         staff_mentions = " ".join([r.mention for r in self.guild.roles if r.name in STAFF_ROLES])
-        embed2 = discord.Embed(title="🎥 Verification Request", description=f"**Member:** {self.member.mention}\n**Era:** {data.get('age','?')}\n**Continent:** {data.get('continent','?')}\n**Spending:** {data.get('spending','?')}\n**Gender:** {data.get('gender','?')}\n**Alliance:** {data.get('alliance','?')}\n\nWaiting for verification video... 🎥", color=0xFF8C00)
+        embed2 = discord.Embed(title="🎥 Verification Request", description=f"**Member:** {self.member.mention}\n**Era:** {data.get('age','?')}\n**Continent:** {data.get('continent','?')}\n**Spending:** {data.get('spending','?')}\n**Gender:** {data.get('gender','?')}\n**Alliance:** {data.get('alliance','?')}\n\nWaiting for screenshot... 📸", color=0xFF8C00)
         embed2.set_thumbnail(url=self.member.display_avatar.url)
         await self.verify_ch.send(content=staff_mentions, embed=embed2, view=VerifyActionView(self.member.id, self.verify_ch.id, data.get("alliance")))
-
-# ========== TICKET ==========
 
 class TicketView(View):
     def __init__(self):
@@ -224,14 +246,13 @@ class CloseTicketView(View):
         await asyncio.sleep(5)
         await interaction.channel.delete()
 
-# ========== EVENTS ==========
-
 @bot.event
 async def on_ready():
     print(f"✅ A3O8E5 BOT Online! — {bot.guilds[0].name}")
     bot.add_view(TicketView())
     bot.add_view(CloseTicketView())
     bot.add_view(VerifyActionView())
+    asyncio.ensure_future(check_news())
 
 @bot.event
 async def on_member_join(member):
@@ -248,7 +269,7 @@ async def on_member_join(member):
     verify_ch = await guild.create_text_channel(f"verify-{member.name.lower()}", category=verify_cat, overwrites=overwrites)
     embed = discord.Embed(
         title=f"⚔️ Welcome to A3O8E5, {member.display_name}!",
-        description="**Complete your profile below, send a screenshot showing you are inside the alliance:**\n\n1️⃣ Your **in-game name**\n2️⃣ Your **alliance name** (KRD / UKA / TNC)\n\n⏰ You have **24 hours** to verify or you will be kicked! 🚫",
+        description="**Complete your profile below, then send a screenshot showing you are inside the alliance!**\n\n⏰ You have **24 hours** to verify or you will be kicked! 🚫",
         color=0xFFD700
     )
     embed.set_thumbnail(url=member.display_avatar.url)
@@ -297,8 +318,6 @@ async def on_message(message):
             if not role: role = await message.guild.create_role(name=LEVEL_ROLES[new])
             await message.author.add_roles(role)
     await bot.process_commands(message)
-
-# ========== COMMANDS ==========
 
 @bot.command()
 async def rank(ctx):
