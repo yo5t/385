@@ -29,6 +29,7 @@ class VerifyActionView(View):
 
     @discord.ui.button(label="✅ Verify", style=discord.ButtonStyle.green, custom_id="verify_accept")
     async def accept(self, interaction: discord.Interaction, button: Button):
+await interaction.response.defer(ephemeral=True)
         if not interaction.user.guild_permissions.manage_roles:
             await interaction.response.send_message("❌ No permission!", ephemeral=True)
             return
@@ -56,6 +57,7 @@ class VerifyActionView(View):
 
     @discord.ui.button(label="❌ Reject", style=discord.ButtonStyle.red, custom_id="verify_reject")
     async def reject(self, interaction: discord.Interaction, button: Button):
+await interaction.response.defer(ephemeral=True)
         if not interaction.user.guild_permissions.manage_roles:
             await interaction.response.send_message("❌ No permission!", ephemeral=True)
             return
