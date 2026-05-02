@@ -68,8 +68,7 @@ await interaction.response.defer(ephemeral=True)
         await interaction.response.send_message(f"❌ {self.member.mention} rejected.", ephemeral=True)
         await asyncio.sleep(3)
         await self.verify_ch.delete()
-        await self.member.kick(reason="Verification rejected")
-
+await self.verify_ch.edit(name="verified-closed")
 class AgeSelect(Select):
     def __init__(self, member_data):
         self.member_data = member_data
