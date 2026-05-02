@@ -208,7 +208,6 @@ async def on_ready():
     print(f"✅ A3O8E5 BOT Online! — {bot.guilds[0].name}")
     bot.add_view(TicketView())
     bot.add_view(CloseTicketView())
-bot.add_view(VerifyActionView(None, None, None))
 
 @bot.event
 async def on_member_join(member):
