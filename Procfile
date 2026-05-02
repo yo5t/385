@@ -1,1 +1,1 @@
-worker: python krd_bot.py
+worker: python a3o8e5_bot.py
